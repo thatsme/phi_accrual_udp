@@ -59,9 +59,7 @@ defmodule PhiAccrualUdp.SenderTest do
     ref = subscribe([[:phi_accrual_udp, :sender, :tick]])
 
     {:ok, _pid} =
-      start_supervised(
-        {Sender, name: name, interval_ms: 30, targets: [{{127, 0, 0, 1}, port}]}
-      )
+      start_supervised({Sender, name: name, interval_ms: 30, targets: [{{127, 0, 0, 1}, port}]})
 
     assert_receive {:event, ^ref, _, %{sent: 1, errors: 0}, _}, 500
   end

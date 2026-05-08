@@ -6,7 +6,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-## [0.1.0] - TBD
+## [0.1.1] - 2026-05-08
+
+### Changed
+
+- **Listener flow control.** `PhiAccrualUdp.Listener` now opens its
+  UDP socket with `active: N` (default `N=100`, configurable via the
+  `:active_count` option) instead of `active: true`. Re-arms on
+  `:udp_passive`. This bounds the per-burst mailbox growth under
+  packet floods.
+
+### Added
+
+- Telemetry event `[:phi_accrual_udp, :listener, :passive]`, emitted
+  each time the listener re-arms after consuming `active_count`
+  packets. Useful for observing ingress saturation.
+
+## [0.1.0] - 2026-05-07
 
 Initial public release. **Alpha** — public API and wire format may
 change before `v1.0` based on real-deployment feedback.

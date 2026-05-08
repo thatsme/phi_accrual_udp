@@ -50,6 +50,11 @@ The receiver does **not** use the packet timestamp for the EWMA — it uses loca
 [:phi_accrual_udp, :listener, :started]
   metadata: %{port}
 
+[:phi_accrual_udp, :listener, :passive]
+  measurements: %{}
+  metadata:     %{port}
+  # emitted on each :udp_passive re-arm; observe ingress saturation
+
 [:phi_accrual_udp, :sample, :received]
   measurements: %{packet_timestamp_ms}
   metadata:     %{node, peer}

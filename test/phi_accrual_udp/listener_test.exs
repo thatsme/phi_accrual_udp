@@ -32,6 +32,26 @@ defmodule PhiAccrualUdp.ListenerTest do
     ref
   end
 
+  defp collect_events(ref, event, min_count, timeout_ms) do
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+    do_collect_events(ref, event, min_count, deadline, [])
+  end
+
+  defp do_collect_events(_ref, _event, min_count, _deadline, acc)
+       when length(acc) >= min_count,
+       do: Enum.reverse(acc)
+
+  defp do_collect_events(ref, event, min_count, deadline, acc) do
+    remaining = max(0, deadline - System.monotonic_time(:millisecond))
+
+    receive do
+      {:event, ^ref, ^event, m, md} ->
+        do_collect_events(ref, event, min_count, deadline, [{m, md} | acc])
+    after
+      remaining -> Enum.reverse(acc)
+    end
+  end
+
   test "decodes a valid packet and emits :sample :received telemetry" do
     port = ephemeral_port()
     name = :"listener_#{System.unique_integer([:positive])}"
@@ -41,7 +61,8 @@ defmodule PhiAccrualUdp.ListenerTest do
 
     send_packet(port, Packet.encode(42))
 
-    assert_receive {:event, ^ref, _, %{packet_timestamp_ms: 42}, %{node: {{127, 0, 0, 1}, _}}}, 500
+    assert_receive {:event, ^ref, _, %{packet_timestamp_ms: 42}, %{node: {{127, 0, 0, 1}, _}}},
+                   500
   end
 
   test "emits :decode :error on bad magic" do
@@ -81,6 +102,47 @@ defmodule PhiAccrualUdp.ListenerTest do
     send_packet(port, Packet.encode(0))
 
     assert_receive {:event, ^ref, _, _, %{node: :test_peer}}, 500
+  end
+
+  test "re-arms after consuming active_count packets" do
+    port = ephemeral_port()
+    name = :"listener_#{System.unique_integer([:positive])}"
+    {:ok, _pid} = start_supervised({Listener, port: port, name: name, active_count: 5})
+
+    ref =
+      subscribe([
+        [:phi_accrual_udp, :listener, :passive],
+        [:phi_accrual_udp, :sample, :received]
+      ])
+
+    {:ok, sender} = :gen_udp.open(0, [:binary])
+
+    for i <- 1..12 do
+      :ok = :gen_udp.send(sender, {127, 0, 0, 1}, port, Packet.encode(i))
+    end
+
+    :gen_udp.close(sender)
+
+    received = collect_events(ref, [:phi_accrual_udp, :sample, :received], 12, 1_000)
+    passive = collect_events(ref, [:phi_accrual_udp, :listener, :passive], 2, 1_000)
+
+    assert length(received) >= 12,
+           "expected at least 12 :sample :received events, got #{length(received)}"
+
+    assert length(passive) >= 2,
+           "expected at least 2 :listener :passive events, got #{length(passive)}"
+  end
+
+  test "default active_count is 100" do
+    port = ephemeral_port()
+    name = :"listener_#{System.unique_integer([:positive])}"
+    {:ok, _pid} = start_supervised({Listener, port: port, name: name})
+
+    ref = subscribe([[:phi_accrual_udp, :sample, :received]])
+
+    send_packet(port, Packet.encode(7))
+
+    assert_receive {:event, ^ref, _, %{packet_timestamp_ms: 7}, _}, 500
   end
 
   test "calls PhiAccrual.observe/2 with local receipt time" do

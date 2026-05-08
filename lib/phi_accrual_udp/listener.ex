@@ -26,11 +26,33 @@ defmodule PhiAccrualUdp.Listener do
         end
       )
 
+  ## Flow control
+
+  The listener opens its UDP socket with `active: N` (rather than
+  `active: true`), so the kernel delivers at most `N` packets to the
+  GenServer mailbox before falling back to passive mode. On
+  `:udp_passive`, the listener re-arms with another batch of `N`.
+  This bounds per-burst mailbox growth under packet floods —
+  important because decode cost is paid as soon as the packet enters
+  the mailbox, well before any downstream `phi_accrual` shedding can
+  help.
+
+  Tune via the `:active_count` option (default `100`). Higher values
+  amortize the re-arm syscall across more packets at the cost of
+  larger worst-case mailbox bursts; lower values give tighter
+  back-pressure but more re-arm overhead.
+
   ## Telemetry
 
       [:phi_accrual_udp, :listener, :started]
         measurements: %{}
         metadata:     %{port}
+
+      [:phi_accrual_udp, :listener, :passive]
+        measurements: %{}
+        metadata:     %{port}
+        # emitted each time the listener re-arms after consuming
+        # `active_count` packets; useful for observing ingress saturation
 
       [:phi_accrual_udp, :sample, :received]
         measurements: %{packet_timestamp_ms}
@@ -58,10 +80,12 @@ defmodule PhiAccrualUdp.Listener do
   alias PhiAccrualUdp.Packet
 
   @default_port 4370
+  @default_active_count 100
 
   @type opts :: [
           port: :inet.port_number(),
           node_resolver: (:inet.ip_address(), :inet.port_number() -> term()),
+          active_count: pos_integer(),
           name: GenServer.name()
         ]
 
@@ -78,11 +102,13 @@ defmodule PhiAccrualUdp.Listener do
   def init(opts) do
     port = Keyword.get(opts, :port, @default_port)
     resolver = Keyword.get(opts, :node_resolver, &__MODULE__.default_node_resolver/2)
+    active_count = Keyword.get(opts, :active_count, @default_active_count)
 
-    case :gen_udp.open(port, [:binary, active: true, reuseaddr: true]) do
+    case :gen_udp.open(port, [:binary, active: active_count, reuseaddr: true]) do
       {:ok, socket} ->
         :telemetry.execute([:phi_accrual_udp, :listener, :started], %{}, %{port: port})
-        {:ok, %{socket: socket, port: port, resolver: resolver}}
+
+        {:ok, %{socket: socket, port: port, resolver: resolver, active_count: active_count}}
 
       {:error, reason} ->
         {:stop, {:udp_open_failed, reason}}
@@ -113,6 +139,18 @@ defmodule PhiAccrualUdp.Listener do
           %{reason: reason, peer: peer}
         )
     end
+
+    {:noreply, state}
+  end
+
+  def handle_info({:udp_passive, socket}, %{socket: socket} = state) do
+    :inet.setopts(socket, active: state.active_count)
+
+    :telemetry.execute(
+      [:phi_accrual_udp, :listener, :passive],
+      %{},
+      %{port: state.port}
+    )
 
     {:noreply, state}
   end

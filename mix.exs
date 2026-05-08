@@ -1,7 +1,7 @@
 defmodule PhiAccrualUdp.MixProject do
   use Mix.Project
 
-  @version "0.1.0"
+  @version "0.1.1"
   @source_url "https://github.com/thatsme/phi_accrual_udp"
 
   def project do

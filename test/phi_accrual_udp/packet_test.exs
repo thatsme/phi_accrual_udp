@@ -8,7 +8,9 @@ defmodule PhiAccrualUdp.PacketTest do
     test "round-trips a basic timestamp" do
       bin = Packet.encode(1_234_567_890)
       assert byte_size(bin) == Packet.size()
-      assert {:ok, %Packet{version: 1, flags: 0, timestamp_ms: 1_234_567_890}} = Packet.decode(bin)
+
+      assert {:ok, %Packet{version: 1, flags: 0, timestamp_ms: 1_234_567_890}} =
+               Packet.decode(bin)
     end
 
     test "round-trips zero timestamp" do
