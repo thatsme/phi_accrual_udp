@@ -12,7 +12,9 @@ defmodule PhiAccrualUdp.Sender do
   Each target is a `{host, port}` tuple. Host can be an IP tuple, a
   charlist, or an atom; port is an integer. Resolution happens on
   every send so DNS changes are picked up without restart, at the
-  cost of a lookup per tick.
+  cost of a resolver lookup per target per tick. For deployments
+  where DNS reliability is uncertain, prefer pre-resolved IP
+  tuples — see "Operational considerations" in the README.
 
       Sender.start_link(
         targets: [

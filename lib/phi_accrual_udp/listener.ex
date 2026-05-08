@@ -14,8 +14,11 @@ defmodule PhiAccrualUdp.Listener do
 
   By default, the listener uses the sender's IP+port tuple as the node
   identifier (`{ip_tuple, port}`). Pass a `:node_resolver` function to
-  map IP+port to your own node atoms — useful for static cluster
-  topologies where you want stable node ids across sender restarts.
+  map IP+port to your own node identifiers. **This is the recommended
+  setup for production deployments** — see "Operational
+  considerations" in the README for the failure modes the default
+  resolver exposes (Sender restart producing new ephemeral source
+  ports, NAT session recycling, container IP changes).
 
       Listener.start_link(
         port: 4370,

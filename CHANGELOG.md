@@ -6,6 +6,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-05-08
+
+### Documentation
+
+- **Operational considerations section** added to the README,
+  documenting two production footguns:
+    - Sender restart producing a new `{ip, port}` peer identity
+      from the Listener's perspective (because Sender uses
+      ephemeral source ports). Recommends `:node_resolver` as the
+      standard production setup.
+    - DNS resolution cost and failure modes in Sender. Recommends
+      pre-resolved IP tuples for deployments with unreliable DNS.
+- Listener moduledoc reframes `:node_resolver` as the recommended
+  production setup, not just a "static topology" option.
+- Sender moduledoc expands the DNS resolution note.
+
+No behaviour change.
+
 ## [0.1.1] - 2026-05-08
 
 ### Changed

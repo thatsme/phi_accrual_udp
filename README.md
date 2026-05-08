@@ -75,6 +75,54 @@ The receiver does **not** use the packet timestamp for the EWMA — it uses loca
 
 UDP is unauthenticated. Anyone who can reach the listener port can send packets that pass `Packet.decode/1` and corrupt detection. In hostile networks: bind to a private interface, firewall the port, or layer authentication via a `node_resolver` that rejects unknown peers.
 
+## Operational considerations
+
+### Node identity and Sender lifecycle
+
+The default `node_resolver` returns `{ip, port}` of the packet's source. Combined with the bundled `PhiAccrualUdp.Sender` — which opens its socket on an ephemeral source port — this means:
+
+* Every Sender restart produces a new `{ip, port}` tuple.
+* The Listener treats the restarted Sender as a brand new peer.
+* The previous peer's estimator goes `:stale` (false positive on a peer that's actually fine).
+* The new peer's estimator restarts cold and spends 8 samples in `:insufficient_data` before φ is reported.
+* Estimator state proliferates over time as Senders cycle.
+
+The same applies under NAT session timeout (UDP NAT sessions typically expire in 30–180s; 1s heartbeats keep them warm but a brief outage can recycle them) and under container restarts that change IP.
+
+For production deployments, supply a `:node_resolver` that maps `{ip, port}` to a stable application-level identifier — node name, hostname, partner ID, whatever your topology provides:
+
+```elixir
+resolver = fn
+  {10, 0, 0, 1}, _ -> :node_a
+  {10, 0, 0, 2}, _ -> :node_b
+  ip, port ->
+    # Reject unknown peers — also a useful security boundary.
+    {:reject, {ip, port}}
+end
+
+{PhiAccrualUdp.Listener, port: 4370, node_resolver: resolver}
+```
+
+The default `{ip, port}` resolver is appropriate for development, demos, and deployments where you control the full Sender lifecycle and accept that restart = new peer.
+
+### DNS resolution in Sender
+
+`PhiAccrualUdp.Sender` resolves hostname targets on every tick via `:gen_udp.send/4`. This is deliberate: rolling DNS changes (cluster reconfig, container replacement) propagate without a Sender restart.
+
+The cost is one resolver lookup per target per interval. The OS resolver caches by default, so almost all hits are local. At 50 targets and a 1-second interval that is 50 lookups/sec, almost all cached — negligible in normal operation.
+
+The risk: if the resolver is slow or unreachable, every tick can stall in `:gen_udp.send/4`. The Sender is a single GenServer, so a slow lookup blocks all targets for that tick. Symptoms: `[:phi_accrual_udp, :sender, :tick]` telemetry shows degraded `sent` counts; receivers see heartbeat gaps and elevated φ.
+
+For deployments where DNS reliability is uncertain, prefer pre-resolved IP tuples in the `:targets` list:
+
+```elixir
+{PhiAccrualUdp.Sender,
+  targets: [{{10, 0, 0, 2}, 4370}, {{10, 0, 0, 3}, 4370}],
+  interval_ms: 1_000}
+```
+
+IP tuples skip the resolver entirely. Trade off: you lose dynamic DNS updates and must restart the Sender to pick up topology changes.
+
 ## License
 
 Apache-2.0.
