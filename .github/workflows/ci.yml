@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    name: test (Elixir ${{ matrix.elixir }} / OTP ${{ matrix.otp }} / ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Floor: minimum supported by mix.exs (~> 1.15)
+          - elixir: "1.15"
+            otp: "26"
+            os: ubuntu-latest
+          # Modern Elixir on stable OTP — the "haven't upgraded
+          # the runtime yet" deployment shape
+          - elixir: "1.19"
+            otp: "26"
+            os: ubuntu-latest
+          # Ceiling: current Elixir + current OTP
+          - elixir: "1.19"
+            otp: "28"
+            os: ubuntu-latest
+          # macOS canary — single job to catch BSD-flavored
+          # :gen_udp / {:ipv6_v6only, true} divergence before
+          # external users hit it. Added at Hex publish per
+          # plan; do not expand to full macOS matrix without
+          # cause.
+          - elixir: "1.19"
+            otp: "28"
+            os: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ matrix.elixir }}
+          otp-version: ${{ matrix.otp }}
+
+      - name: Cache deps and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-elixir-${{ matrix.elixir }}-otp-${{ matrix.otp }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-elixir-${{ matrix.elixir }}-otp-${{ matrix.otp }}-mix-
+
+      - run: mix deps.get
+
+      - name: Audit deps for retired Hex packages
+        run: mix hex.audit
+
+      - name: Compile (warnings as errors)
+        run: mix compile --warnings-as-errors
+
+      - run: mix test
+
+      - run: mix credo
+
+      - name: Build dialyzer PLT (only on cache miss)
+        run: mix dialyzer --plt
+
+      - name: Dialyzer
+        run: mix dialyzer --format short

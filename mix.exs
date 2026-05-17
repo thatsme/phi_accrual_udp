@@ -1,7 +1,7 @@
 defmodule PhiAccrualUdp.MixProject do
   use Mix.Project
 
-  @version "0.1.2"
+  @version "1.0.0"
   @source_url "https://github.com/thatsme/phi_accrual_udp"
 
   def project do
@@ -16,6 +16,7 @@ defmodule PhiAccrualUdp.MixProject do
       name: "phi_accrual_udp",
       source_url: @source_url,
       docs: docs(),
+      dialyzer: dialyzer(),
       elixirc_options: [warnings_as_errors: true]
     ]
   end
@@ -31,7 +32,25 @@ defmodule PhiAccrualUdp.MixProject do
       {:phi_accrual, "~> 1.0"},
       {:telemetry, "~> 1.2"},
       {:stream_data, "~> 1.1", only: [:test, :dev]},
-      {:ex_doc, "~> 0.34", only: :dev, runtime: false}
+      {:ex_doc, "~> 0.34", only: :dev, runtime: false},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
+    ]
+  end
+
+  defp dialyzer do
+    [
+      flags: [
+        :underspecs,
+        :unmatched_returns,
+        :error_handling,
+        :unknown,
+        :extra_return,
+        :missing_return
+      ],
+      plt_add_apps: [:phi_accrual, :telemetry, :stream_data],
+      ignore_warnings: ".dialyzer_ignore.exs",
+      list_unused_filters: true
     ]
   end
 
@@ -49,7 +68,7 @@ defmodule PhiAccrualUdp.MixProject do
         "Changelog" => "#{@source_url}/blob/main/CHANGELOG.md",
         "phi_accrual" => "https://hex.pm/packages/phi_accrual"
       },
-      files: ~w(lib mix.exs README.md CHANGELOG.md LICENSE .formatter.exs)
+      files: ~w(lib mix.exs README.md UPGRADING.md CHANGELOG.md LICENSE .formatter.exs)
     ]
   end
 
